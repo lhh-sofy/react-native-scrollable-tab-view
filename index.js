@@ -14,7 +14,7 @@ const {
   InteractionManager,
 } = ReactNative;
 const TimerMixin = require('react-timer-mixin');
-
+import {MScrollView} from 'react-native-mjrefresh'
 const SceneComponent = require('./SceneComponent');
 const DefaultTabBar = require('./DefaultTabBar');
 const ScrollableTabBar = require('./ScrollableTabBar');
@@ -22,7 +22,7 @@ const ScrollableTabBar = require('./ScrollableTabBar');
 const AnimatedViewPagerAndroid = Platform.OS === 'android' ?
   Animated.createAnimatedComponent(ViewPagerAndroid) :
   undefined;
-
+let AnimatedScrollViewIos = Animated.createAnimatedComponent(MScrollView);
 const ScrollableTabView = createReactClass({
   mixins: [TimerMixin, ],
   statics: {
@@ -43,6 +43,7 @@ const ScrollableTabView = createReactClass({
     scrollWithoutAnimation: PropTypes.bool,
     locked: PropTypes.bool,
     prerenderingSiblingsNumber: PropTypes.number,
+    isMJRefresh: PropTypes.bool,
   },
 
   getDefaultProps() {
@@ -56,6 +57,7 @@ const ScrollableTabView = createReactClass({
       scrollWithoutAnimation: false,
       locked: false,
       prerenderingSiblingsNumber: 0,
+      isMJRefresh:false,//ios是否替换成MJRefresh的刷新组件 默认不使用
     };
   },
 
@@ -217,8 +219,11 @@ const ScrollableTabView = createReactClass({
 
   renderScrollableContent() {
     if (Platform.OS === 'ios') {
+      if(this.props.isMJRefresh==false){
+        AnimatedScrollViewIos = Animated.ScrollView;
+      }
       const scenes = this._composeScenes();
-      return <Animated.ScrollView
+      return <AnimatedScrollViewIos
         horizontal
         pagingEnabled
         automaticallyAdjustContentInsets={false}
@@ -240,7 +245,7 @@ const ScrollableTabView = createReactClass({
         {...this.props.contentProps}
       >
           {scenes}
-      </Animated.ScrollView>;
+      </AnimatedScrollViewIos>;
     } else {
       const scenes = this._composeScenes();
       return <AnimatedViewPagerAndroid
@@ -329,23 +334,21 @@ const ScrollableTabView = createReactClass({
   _handleLayout(e) {
     const { width, } = e.nativeEvent.layout;
 
-    if (!width || width <= 0 || Math.round(width) === Math.round(this.state.containerWidth)) {
-      return;
+    if (Math.round(width) !== Math.round(this.state.containerWidth)) {
+      if (Platform.OS === 'ios') {
+        const containerWidthAnimatedValue = new Animated.Value(width);
+        // Need to call __makeNative manually to avoid a native animated bug. See
+        // https://github.com/facebook/react-native/pull/14435
+        containerWidthAnimatedValue.__makeNative();
+        scrollValue = Animated.divide(this.state.scrollXIOS, containerWidthAnimatedValue);
+        this.setState({ containerWidth: width, scrollValue, });
+      } else {
+        this.setState({ containerWidth: width, });
+      }
+      this.requestAnimationFrame(() => {
+        this.goToPage(this.state.currentPage);
+      });
     }
-    
-    if (Platform.OS === 'ios') {
-      const containerWidthAnimatedValue = new Animated.Value(width);
-      // Need to call __makeNative manually to avoid a native animated bug. See
-      // https://github.com/facebook/react-native/pull/14435
-      containerWidthAnimatedValue.__makeNative();
-      scrollValue = Animated.divide(this.state.scrollXIOS, containerWidthAnimatedValue);
-      this.setState({ containerWidth: width, scrollValue, });
-    } else {
-      this.setState({ containerWidth: width, });
-    }
-    this.requestAnimationFrame(() => {
-      this.goToPage(this.state.currentPage);
-    });
   },
 
   _children(children = this.props.children) {
